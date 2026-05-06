@@ -23,7 +23,6 @@ export interface Position {
   dayChangePct: number;
   netAddedToday: number;
   weight: number; // percentage of portfolio
-  sector?: string;
   hasSplit?: boolean;
   splitRatio?: number;
 }
@@ -35,7 +34,6 @@ export interface StockQuote {
   change: number;
   changePct: number;
   previousClose: number;
-  sector?: string;
 }
 
 export interface HistoricalPrice {

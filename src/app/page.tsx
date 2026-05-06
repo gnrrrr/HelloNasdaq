@@ -103,12 +103,6 @@ export default function Dashboard() {
       const res = await fetch(`/api/stock/quote?symbols=${allSymbols.join(',')}`);
       const data: Record<string, StockQuote> = await res.json();
 
-      
-
-      Object.keys(data).forEach(sym => {
-        data[sym].sector = data[sym].sector || 'Other';
-      });
-
       setQuotes(data);
     } catch {
       // Silently handle quote fetch failures
@@ -128,7 +122,6 @@ export default function Dashboard() {
 
 
   // Calculate positions when quotes or snapshot change.
-  // In snapshot mode we use historical prices fetched in the history effect.
   useEffect(() => {
     if (Object.keys(quotes).length > 0 && !snapshotDate) {
       const pos = calculatePositions(activeTxs, quotes, splits);
@@ -178,22 +171,6 @@ export default function Dashboard() {
         // Update splits state so calculations can use it
         setSplits(allSplits);
 
-        // Fetch real sectors from API
-        const profilePromises = tickers.map(async (symbol) => {
-          try {
-            const res = await fetch(`/api/stock/profile?symbol=${symbol}`);
-            if (!res.ok) return { symbol, sector: 'Other' };
-            const data = await res.json();
-            return { symbol, sector: data.sector || 'Other' };
-          } catch {
-            return { symbol, sector: 'Other' };
-          }
-        });
-        const profileResults = await Promise.all(profilePromises);
-        const sMap: Record<string, string> = {};
-        profileResults.forEach(p => { sMap[p.symbol] = p.sector; });
-
-
         // ── Determine Effective Market Date ──
         const qqq = historicalPrices['^NDX'] || [];
         const effectiveMarketDate = (qqq.length > 0 && !snapshotDate)
@@ -206,10 +183,7 @@ export default function Dashboard() {
         const transactionLimit = snapshotDate || calendarToday;
         const filteredTxs = transactions.filter(tx => tx.date <= transactionLimit);
 
-        const normalPositions = calculatePositions(filteredTxs, quotes, splits, effectiveMarketDate).map(p => ({
-          ...p,
-          sector: sMap[p.ticker] || p.sector || 'Other'
-        }));
+        const normalPositions = calculatePositions(filteredTxs, quotes, splits, effectiveMarketDate);
         setPositions(normalPositions);
 
         if (!snapshotDate) {
@@ -253,10 +227,7 @@ export default function Dashboard() {
                 };
               }
             }
-            const snapPositions = calculatePositions(filteredTxs, snapQuotes, splits, snapshotDate).map(p => ({
-              ...p,
-              sector: sMap[p.ticker] || p.sector || 'Other'
-            }));
+            const snapPositions = calculatePositions(filteredTxs, snapQuotes, splits, snapshotDate);
             setPositions(snapPositions);
           }
         }

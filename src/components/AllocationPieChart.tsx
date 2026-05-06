@@ -109,8 +109,7 @@ export default function AllocationPieChart({ positions }: Props) {
       name: p.name || p.ticker,
       ticker: p.ticker,
       value: p.currentValue,
-      weight: p.weight,
-      sector: p.sector || 'Other'
+      weight: p.weight
     })).sort((a, b) => b.value - a.value);
 
     return sorted.map((item, index) => ({
@@ -182,9 +181,6 @@ export default function AllocationPieChart({ positions }: Props) {
                   }}>
                     <div style={{ color: '#ffffff', fontSize: '0.9rem', fontWeight: 800 }}>
                       {d.name}
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase' }}>
-                      {d.sector}
                     </div>
                   </div>
                 );

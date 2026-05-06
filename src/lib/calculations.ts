@@ -165,7 +165,6 @@ export function calculatePositions(
       dayChange,
       dayChangePct,
       netAddedToday: pos.netAddedToday,
-      sector: quote?.sector || 'Other',
       weight: 0, // will be set in second pass
       hasSplit: hasRecentSplit,
       splitRatio: hasTotalSplit ? splitRatio : undefined,
