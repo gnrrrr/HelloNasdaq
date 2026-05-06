@@ -69,9 +69,15 @@ export default function Dashboard() {
    * In LIVE mode this is the full list.
    */
   const activeTxs: Transaction[] = useMemo(() => {
-    const limitDate = snapshotDate || marketDate;
-    return transactions.filter(tx => tx.date <= limitDate);
-  }, [transactions, snapshotDate, marketDate]);
+    // In LIVE mode, we show all transactions up to current wall-clock today.
+    // We only filter if we are in a historical snapshot mode.
+    if (snapshotDate) {
+      return transactions.filter(tx => tx.date <= snapshotDate);
+    }
+    const now = new Date();
+    const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    return transactions.filter(tx => tx.date <= today);
+  }, [transactions, snapshotDate]);
 
   // Load transactions from shared database
   useEffect(() => {
@@ -186,8 +192,11 @@ export default function Dashboard() {
           ? qqq[qqq.length - 1].date
           : (snapshotDate || getTodayStr());
 
-        // Transactions filtered to the effective market boundary
-        const filteredTxs = transactions.filter(tx => tx.date <= effectiveMarketDate);
+        // Transactions filtered to the relevant boundary
+        const now = new Date();
+        const calendarToday = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+        const transactionLimit = snapshotDate || calendarToday;
+        const filteredTxs = transactions.filter(tx => tx.date <= transactionLimit);
 
         const normalPositions = calculatePositions(filteredTxs, quotes, effectiveMarketDate).map(p => ({
           ...p,
