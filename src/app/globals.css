@@ -388,6 +388,25 @@ body {
   text-overflow: ellipsis;
 }
 
+.badge-split {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: var(--accent-cyan-dim);
+  border: 1px solid rgba(68, 170, 204, 0.3);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.5px;
+  cursor: help;
+  transition: all 0.2s ease;
+}
+
+.badge-split:hover {
+  background: rgba(68, 170, 204, 0.2);
+  border-color: var(--accent-cyan);
+}
+
 /* ── Buttons ───────────────────────────────────────────────── */
 
 .btn {

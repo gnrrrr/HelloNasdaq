@@ -81,7 +81,14 @@ export default function PositionsTable({ positions }: Props) {
                 <td>
                   <div className="ticker-cell">
                     <div>
-                      <div className="ticker-symbol">{pos.ticker}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div className="ticker-symbol">{pos.ticker}</div>
+                        {pos.hasSplit && (
+                          <span className="badge-split" title={`Adjusted for ${pos.splitRatio}:1 split`}>
+                            SPLIT
+                          </span>
+                        )}
+                      </div>
                       <div className="ticker-name">{pos.name}</div>
                     </div>
                   </div>

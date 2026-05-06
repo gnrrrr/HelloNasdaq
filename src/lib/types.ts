@@ -24,6 +24,8 @@ export interface Position {
   netAddedToday: number;
   weight: number; // percentage of portfolio
   sector?: string;
+  hasSplit?: boolean;
+  splitRatio?: number;
 }
 
 export interface StockQuote {

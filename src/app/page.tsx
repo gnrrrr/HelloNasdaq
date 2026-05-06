@@ -8,7 +8,7 @@ import TransactionModal from '@/components/TransactionModal';
 import TransactionHistory from '@/components/TransactionHistory';
 import PerformanceChart from '@/components/PerformanceChart';
 import AllocationPieChart from '@/components/AllocationPieChart';
-import { Transaction, Position, StockQuote, CashFlow } from '@/lib/types';
+import { Transaction, Position, StockQuote, CashFlow, StockSplit } from '@/lib/types';
 import {
   addTransaction,
   updateTransaction,
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [quotes, setQuotes] = useState<Record<string, StockQuote>>({});
   const [positions, setPositions] = useState<Position[]>([]);
+  const [splits, setSplits] = useState<StockSplit[]>([]);
 
   const [perfData, setPerfData] = useState<{ date: string; portfolio: number; benchmark: number }[]>([]);
   const [summaryReturn, setSummaryReturn] = useState<number | null>(null);
@@ -130,10 +131,10 @@ export default function Dashboard() {
   // In snapshot mode we use historical prices fetched in the history effect.
   useEffect(() => {
     if (Object.keys(quotes).length > 0 && !snapshotDate) {
-      const pos = calculatePositions(activeTxs, quotes);
+      const pos = calculatePositions(activeTxs, quotes, splits);
       setPositions(pos);
     }
-  }, [activeTxs, quotes, snapshotDate]);
+  }, [activeTxs, quotes, snapshotDate, splits]);
 
   // Fetch historical data for charts
   useEffect(() => {
@@ -160,15 +161,22 @@ export default function Dashboard() {
         const promises = [...tickers, '^NDX'].map(async (symbol) => {
           const res = await fetch(`/api/stock/history?symbol=${symbol}&period=${period}`);
           const data = await res.json();
-          return { symbol, prices: data.prices || [] };
+          return { symbol, prices: data.prices || [], splits: data.splits || [] };
         });
 
         const results = await Promise.all(promises);
         const historicalPrices: Record<string, { date: string; close: number; open?: number }[]> = {};
+        const allSplits: StockSplit[] = [];
 
         for (const r of results) {
           historicalPrices[r.symbol] = r.prices;
+          if (r.splits) {
+            allSplits.push(...r.splits);
+          }
         }
+        
+        // Update splits state so calculations can use it
+        setSplits(allSplits);
 
         // Fetch real sectors from API
         const profilePromises = tickers.map(async (symbol) => {
@@ -198,7 +206,7 @@ export default function Dashboard() {
         const transactionLimit = snapshotDate || calendarToday;
         const filteredTxs = transactions.filter(tx => tx.date <= transactionLimit);
 
-        const normalPositions = calculatePositions(filteredTxs, quotes, effectiveMarketDate).map(p => ({
+        const normalPositions = calculatePositions(filteredTxs, quotes, splits, effectiveMarketDate).map(p => ({
           ...p,
           sector: sMap[p.ticker] || p.sector || 'Other'
         }));
@@ -214,7 +222,7 @@ export default function Dashboard() {
 
 
 
-        const history = generatePortfolioHistory(filteredTxs, tickerPrices);
+        const history = generatePortfolioHistory(filteredTxs, tickerPrices, splits);
 
         // ── Snapshot Mode: compute positions from historical prices ──
         if (snapshotDate) {
@@ -245,7 +253,7 @@ export default function Dashboard() {
                 };
               }
             }
-            const snapPositions = calculatePositions(filteredTxs, snapQuotes, snapshotDate).map(p => ({
+            const snapPositions = calculatePositions(filteredTxs, snapQuotes, splits, snapshotDate).map(p => ({
               ...p,
               sector: sMap[p.ticker] || p.sector || 'Other'
             }));
@@ -318,7 +326,7 @@ export default function Dashboard() {
 
         if (displayHistory.length > 0 && qqq.length > 0) {
           // ── Professional Hybrid: TWR Chart (%) + Simple ROI Cards ──
-          const portHistory = generatePortfolioHistory(filteredTxs, tickerPrices);
+          const portHistory = generatePortfolioHistory(filteredTxs, tickerPrices, splits);
           const portHistoryClipped = portHistory.filter(h => h.date <= effectiveMarketDate);
 
           // Build benchmark history for TWR comparison
@@ -378,7 +386,7 @@ export default function Dashboard() {
 
         // Calculate MWR using filteredTxs
         const currentTodayStr = snapshotDate || effectiveMarketDate;
-        const currentPositions = snapshotDate ? positions : calculatePositions(filteredTxs, quotes, currentTodayStr);
+        const currentPositions = snapshotDate ? positions : calculatePositions(filteredTxs, quotes, splits, currentTodayStr);
         const totals = calculatePortfolioTotals(currentPositions);
         const cashFlows = buildCashFlows(filteredTxs, totals.totalValue, effectiveMarketDate);
         calculateMWR(cashFlows);
