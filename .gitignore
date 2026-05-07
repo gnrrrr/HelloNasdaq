@@ -44,3 +44,6 @@ next-env.d.ts
 src/data/portfolio.json
 src/data/portfolio_backup.json
 
+
+# Gemini AI Assistant
+.gemini/

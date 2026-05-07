@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   const range = RANGE_MAP[period] || '1y';
 
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}?interval=1d&range=${range}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol.toUpperCase()}?interval=1d&range=${range}&events=split`;
     const res = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -56,9 +56,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Extract splits
+    const splits: { ticker: string; date: string; ratio: number }[] = [];
+    const splitData = chart.events?.splits;
+    if (splitData) {
+      Object.values(splitData).forEach((s: any) => {
+        const ratio = s.numerator / s.denominator;
+        const date = new Date(s.date * 1000).toISOString().split('T')[0];
+        splits.push({ ticker: symbol.toUpperCase(), date, ratio });
+      });
+    }
+
     return Response.json({
       symbol: symbol.toUpperCase(),
       prices,
+      splits,
     });
   } catch {
     return Response.json({ error: 'Failed to fetch history' }, { status: 500 });

@@ -109,8 +109,7 @@ export default function AllocationPieChart({ positions }: Props) {
       name: p.name || p.ticker,
       ticker: p.ticker,
       value: p.currentValue,
-      weight: p.weight,
-      sector: p.sector || 'Other'
+      weight: p.weight
     })).sort((a, b) => b.value - a.value);
 
     return sorted.map((item, index) => ({
@@ -168,28 +167,6 @@ export default function AllocationPieChart({ positions }: Props) {
                 />
               ))}
             </Pie>
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null;
-                const d = payload[0].payload;
-                return (
-                  <div className="chart-tooltip" style={{
-                    background: '#0f172a',
-                    border: '1px solid #1e293b',
-                    borderRadius: '8px',
-                    padding: '8px 12px',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)'
-                  }}>
-                    <div style={{ color: '#ffffff', fontSize: '0.9rem', fontWeight: 800 }}>
-                      {d.name}
-                    </div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase' }}>
-                      {d.sector}
-                    </div>
-                  </div>
-                );
-              }}
-            />
           </PieChart>
         </ResponsiveContainer>
       </div>

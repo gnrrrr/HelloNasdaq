@@ -8,7 +8,7 @@ import TransactionModal from '@/components/TransactionModal';
 import TransactionHistory from '@/components/TransactionHistory';
 import PerformanceChart from '@/components/PerformanceChart';
 import AllocationPieChart from '@/components/AllocationPieChart';
-import { Transaction, Position, StockQuote, CashFlow } from '@/lib/types';
+import { Transaction, Position, StockQuote, CashFlow, StockSplit } from '@/lib/types';
 import {
   addTransaction,
   updateTransaction,
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [quotes, setQuotes] = useState<Record<string, StockQuote>>({});
   const [positions, setPositions] = useState<Position[]>([]);
+  const [splits, setSplits] = useState<StockSplit[]>([]);
 
   const [perfData, setPerfData] = useState<{ date: string; portfolio: number; benchmark: number }[]>([]);
   const [summaryReturn, setSummaryReturn] = useState<number | null>(null);
@@ -102,12 +103,6 @@ export default function Dashboard() {
       const res = await fetch(`/api/stock/quote?symbols=${allSymbols.join(',')}`);
       const data: Record<string, StockQuote> = await res.json();
 
-      
-
-      Object.keys(data).forEach(sym => {
-        data[sym].sector = data[sym].sector || 'Other';
-      });
-
       setQuotes(data);
     } catch {
       // Silently handle quote fetch failures
@@ -127,13 +122,12 @@ export default function Dashboard() {
 
 
   // Calculate positions when quotes or snapshot change.
-  // In snapshot mode we use historical prices fetched in the history effect.
   useEffect(() => {
     if (Object.keys(quotes).length > 0 && !snapshotDate) {
-      const pos = calculatePositions(activeTxs, quotes);
+      const pos = calculatePositions(activeTxs, quotes, splits);
       setPositions(pos);
     }
-  }, [activeTxs, quotes, snapshotDate]);
+  }, [activeTxs, quotes, snapshotDate, splits]);
 
   // Fetch historical data for charts
   useEffect(() => {
@@ -160,31 +154,22 @@ export default function Dashboard() {
         const promises = [...tickers, '^NDX'].map(async (symbol) => {
           const res = await fetch(`/api/stock/history?symbol=${symbol}&period=${period}`);
           const data = await res.json();
-          return { symbol, prices: data.prices || [] };
+          return { symbol, prices: data.prices || [], splits: data.splits || [] };
         });
 
         const results = await Promise.all(promises);
         const historicalPrices: Record<string, { date: string; close: number; open?: number }[]> = {};
+        const allSplits: StockSplit[] = [];
 
         for (const r of results) {
           historicalPrices[r.symbol] = r.prices;
-        }
-
-        // Fetch real sectors from API
-        const profilePromises = tickers.map(async (symbol) => {
-          try {
-            const res = await fetch(`/api/stock/profile?symbol=${symbol}`);
-            if (!res.ok) return { symbol, sector: 'Other' };
-            const data = await res.json();
-            return { symbol, sector: data.sector || 'Other' };
-          } catch {
-            return { symbol, sector: 'Other' };
+          if (r.splits) {
+            allSplits.push(...r.splits);
           }
-        });
-        const profileResults = await Promise.all(profilePromises);
-        const sMap: Record<string, string> = {};
-        profileResults.forEach(p => { sMap[p.symbol] = p.sector; });
-
+        }
+        
+        // Update splits state so calculations can use it
+        setSplits(allSplits);
 
         // ── Determine Effective Market Date ──
         const qqq = historicalPrices['^NDX'] || [];
@@ -198,10 +183,7 @@ export default function Dashboard() {
         const transactionLimit = snapshotDate || calendarToday;
         const filteredTxs = transactions.filter(tx => tx.date <= transactionLimit);
 
-        const normalPositions = calculatePositions(filteredTxs, quotes, effectiveMarketDate).map(p => ({
-          ...p,
-          sector: sMap[p.ticker] || p.sector || 'Other'
-        }));
+        const normalPositions = calculatePositions(filteredTxs, quotes, splits, effectiveMarketDate);
         setPositions(normalPositions);
 
         if (!snapshotDate) {
@@ -214,7 +196,7 @@ export default function Dashboard() {
 
 
 
-        const history = generatePortfolioHistory(filteredTxs, tickerPrices);
+        const history = generatePortfolioHistory(filteredTxs, tickerPrices, splits);
 
         // ── Snapshot Mode: compute positions from historical prices ──
         if (snapshotDate) {
@@ -245,10 +227,7 @@ export default function Dashboard() {
                 };
               }
             }
-            const snapPositions = calculatePositions(filteredTxs, snapQuotes, snapshotDate).map(p => ({
-              ...p,
-              sector: sMap[p.ticker] || p.sector || 'Other'
-            }));
+            const snapPositions = calculatePositions(filteredTxs, snapQuotes, splits, snapshotDate);
             setPositions(snapPositions);
           }
         }
@@ -318,7 +297,7 @@ export default function Dashboard() {
 
         if (displayHistory.length > 0 && qqq.length > 0) {
           // ── Professional Hybrid: TWR Chart (%) + Simple ROI Cards ──
-          const portHistory = generatePortfolioHistory(filteredTxs, tickerPrices);
+          const portHistory = generatePortfolioHistory(filteredTxs, tickerPrices, splits);
           const portHistoryClipped = portHistory.filter(h => h.date <= effectiveMarketDate);
 
           // Build benchmark history for TWR comparison
@@ -378,7 +357,7 @@ export default function Dashboard() {
 
         // Calculate MWR using filteredTxs
         const currentTodayStr = snapshotDate || effectiveMarketDate;
-        const currentPositions = snapshotDate ? positions : calculatePositions(filteredTxs, quotes, currentTodayStr);
+        const currentPositions = snapshotDate ? positions : calculatePositions(filteredTxs, quotes, splits, currentTodayStr);
         const totals = calculatePortfolioTotals(currentPositions);
         const cashFlows = buildCashFlows(filteredTxs, totals.totalValue, effectiveMarketDate);
         calculateMWR(cashFlows);

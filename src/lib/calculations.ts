@@ -1,4 +1,4 @@
-import { Transaction, Position, CashFlow, StockQuote } from './types';
+import { Transaction, Position, CashFlow, StockQuote, StockSplit } from './types';
 
 /**
  * Returns transaction fee.
@@ -7,6 +7,36 @@ import { Transaction, Position, CashFlow, StockQuote } from './types';
 export function getTransactionFee(baseCommission?: number): number {
   if (!baseCommission) return 0;
   return baseCommission;
+}
+
+/**
+ * Adjusts transactions for stock splits.
+ * If a split happened AFTER a transaction date, we multiply the quantity
+ * and divide the price by the split ratio.
+ */
+export function applySplits(transactions: Transaction[], splits: StockSplit[]): Transaction[] {
+  if (!splits || splits.length === 0) return transactions;
+
+  return transactions.map(tx => {
+    let adjustedQty = tx.quantity;
+    let adjustedPrice = tx.price;
+
+    // Find all splits for this ticker that happened strictly AFTER the transaction date
+    const relevantSplits = splits.filter(s =>
+      s.ticker === tx.ticker && s.date > tx.date
+    );
+
+    for (const split of relevantSplits) {
+      adjustedQty *= split.ratio;
+      adjustedPrice /= split.ratio;
+    }
+
+    return {
+      ...tx,
+      quantity: adjustedQty,
+      price: adjustedPrice
+    };
+  });
 }
 
 // ── Positions Calculation ─────────────────────────────────────
@@ -29,8 +59,11 @@ export function getTodayStr(): string {
 export function calculatePositions(
   transactions: Transaction[],
   quotes: Record<string, StockQuote>,
+  splits: StockSplit[] = [],
   todayStrOverride?: string
 ): Position[] {
+  const adjustedTxs = applySplits(transactions, splits);
+  
   const posMap = new Map<string, {
     totalShares: number;
     totalCost: number;
@@ -40,7 +73,7 @@ export function calculatePositions(
 
   const todayStr = todayStrOverride || getTodayStr();
 
-  for (const tx of transactions) {
+  for (const tx of adjustedTxs) {
     const existing = posMap.get(tx.ticker) || {
       totalShares: 0,
       totalCost: 0,
@@ -107,26 +140,34 @@ export function calculatePositions(
     const dayChangeBase = (yesterdayValue + pos.netAddedToday);
     const dayChangePct = dayChangeBase > 0 ? (dayChange / dayChangeBase) * 100 : (quote?.changePct || 0);
 
-    // Guard: avgCost is 0 if totalShares rounds to zero (should not happen with threshold above)
-    const avgCost = pos.totalShares > 1e-8 ? pos.totalCost / pos.totalShares : 0;
-    // Guard: returnPct is 0 if cost is 0 (price was $0 — bad data from API)
-    const returnPct = pos.totalCost > 0 ? ((currentValue - pos.totalCost) / pos.totalCost) * 100 : 0;
+    // Determine split info for this ticker
+    const tickerSplits = splits.filter(s => s.ticker === ticker);
+    const hasTotalSplit = tickerSplits.length > 0;
+    
+    // UI Notification: only show badge if the split was recent (within 45 days)
+    const recentWindow = new Date();
+    recentWindow.setDate(recentWindow.getDate() - 45);
+    const hasRecentSplit = tickerSplits.some(s => new Date(s.date) >= recentWindow);
+
+    // Calculate cumulative split ratio for information display
+    const splitRatio = tickerSplits.reduce((acc, s) => acc * s.ratio, 1);
 
     positions.push({
       ticker,
       name: quote?.name || ticker,
       totalShares: pos.totalShares,
-      avgCost,
+      avgCost: pos.totalShares > 1e-8 ? pos.totalCost / pos.totalShares : 0,
       currentPrice,
       currentValue,
       totalCost: pos.totalCost,
       returnAmt: currentValue - pos.totalCost,
-      returnPct,
+      returnPct: pos.totalCost > 0 ? ((currentValue - pos.totalCost) / pos.totalCost) * 100 : 0,
       dayChange,
       dayChangePct,
       netAddedToday: pos.netAddedToday,
-      sector: quote?.sector || 'Other',
       weight: 0, // will be set in second pass
+      hasSplit: hasRecentSplit,
+      splitRatio: hasTotalSplit ? splitRatio : undefined,
     });
   });
 
@@ -281,9 +322,12 @@ export function calculateMWR(cashFlows: CashFlow[]): number | null {
 
 export function generatePortfolioHistory(
   transactions: Transaction[],
-  historicalPrices: Record<string, { date: string; close: number }[]>
+  historicalPrices: Record<string, { date: string; close: number }[]>,
+  splits: StockSplit[] = []
 ): { date: string; value: number; cost: number }[] {
   if (transactions.length === 0) return [];
+
+  const adjustedTxs = applySplits(transactions, splits);
 
   // Build a sorted list of all unique dates from price history
   const allDatesSet = new Set<string>();
@@ -309,7 +353,7 @@ export function generatePortfolioHistory(
     // Calculate holdings as of this date
     const holdings = new Map<string, { shares: number; cost: number }>();
 
-    for (const tx of transactions) {
+    for (const tx of adjustedTxs) {
       if (tx.date > date) break;
       const h = holdings.get(tx.ticker) || { shares: 0, cost: 0 };
       if (tx.type === 'BUY') {
